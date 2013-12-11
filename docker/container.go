@@ -67,8 +67,16 @@ func (c *ContainerService) Inspect(id string) (*Container, error) {
 
 // Run the container
 func (c *ContainerService) Run(conf *Config, out io.Writer) (*Wait, error) {
+	// create the container from the image
 	run, err := c.Create(conf)
-	if err != nil {
+	// if an image is not found let's retrieve
+	// from the central index
+	if err == ErrNotFound {
+		// attempt to pull the image
+		if err := c.Images.Pull(conf.Image); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
 		return nil, err
 	}
 

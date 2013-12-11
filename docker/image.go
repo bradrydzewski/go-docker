@@ -2,8 +2,9 @@ package docker
 
 import (
 	"fmt"
-	"io"
 	"time"
+
+	"github.com/dotcloud/docker/utils"
 )
 
 type Images struct {
@@ -54,10 +55,17 @@ func (c *ImageService) Create(image string) error {
 	return c.do("POST", fmt.Sprintf("/images/create?fromImage=%s"), nil, nil)
 }
 
-func (c *ImageService) Pull(name, tag string, in io.Reader, out io.Writer) error {
+func (c *ImageService) Pull(image string) error {
+	name, tag := utils.ParseRepositoryTag(image)
+	if tag == "" {
+		tag = DEFAULTTAG
+	}
+	return c.PullTag(name, tag)
+}
+
+func (c *ImageService) PullTag(name, tag string) error {
 	path := fmt.Sprintf("/images/create?fromImage=%s&tag=%s", name, tag)
-	//path := fmt.Sprintf("/images/create?fromImage=%s", name)
-	return c.stream("POST", path, in, out)
+	return c.stream("POST", path, nil, nil)
 }
 
 // Remove the image name from the filesystem

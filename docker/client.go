@@ -22,14 +22,25 @@ const (
 	DEFAULTHTTPPORT   = 4243
 	DEFAULTUNIXSOCKET = "/var/run/docker.sock"
 	DEFAULTPROTOCOL   = "unix"
+	DEFAULTTAG        = "latest"
 	VERSION           = "0.7.1"
 )
+
+// Enables verbose logging to the Terminal window
+var Logging = true
 
 // New creates an instance of the Docker Client
 func New() *Client {
 	c := &Client{}
 	c.proto = DEFAULTPROTOCOL
 	c.addr = DEFAULTUNIXSOCKET
+
+	// if the default socket doesn't exist then
+	// we'll try to connect to the default tcp address
+	if _, err := os.Stat(DEFAULTUNIXSOCKET); err != nil {
+		c.proto = "tcp"
+		c.addr = "0.0.0.0:4243"
+	}
 
 	c.Images = &ImageService{c}
 	c.Containers = &ContainerService{c}
@@ -184,7 +195,7 @@ func (c *Client) stream(method, path string, in io.Reader, out io.Writer) error 
 	}
 
 	// setup the request
-	req, err := http.NewRequest(method, fmt.Sprintf("/v%g%s", APIVERSION, path), nil)
+	req, err := http.NewRequest(method, fmt.Sprintf("/v%g%s", APIVERSION, path), in)
 	if err != nil {
 		return err
 	}
@@ -229,23 +240,21 @@ func (c *Client) stream(method, path string, in io.Reader, out io.Writer) error 
 		terminalFd uintptr
 	)
 
-	if in != nil {
-		if file, ok := in.(*os.File); ok {
-			terminalFd = file.Fd()
-			isTerminal = term.IsTerminal(terminalFd)
+	if Logging {
+		terminalFd = os.Stdin.Fd()
+		isTerminal = term.IsTerminal(terminalFd)
+		if out == nil {
+			out = os.Stdout
 		}
 	}
 
-	// write the output stream
-	if out != nil {
-		// if json
-		if resp.Header.Get("Content-Type") == "application/json" {
-			return utils.DisplayJSONMessagesStream(resp.Body, out, terminalFd, isTerminal)
-		}
-		// otherwise plain text
-		if _, err := io.Copy(out, resp.Body); err != nil {
-			return err
-		}
+	// copy the output stream to the writer
+	if resp.Header.Get("Content-Type") == "application/json" {
+		return utils.DisplayJSONMessagesStream(resp.Body, out, terminalFd, isTerminal)
+	}
+	// otherwise plain text
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		return err
 	}
 
 	return nil
