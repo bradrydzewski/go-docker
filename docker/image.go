@@ -2,8 +2,14 @@ package docker
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"os"
 	"time"
 
+	"github.com/dotcloud/docker/archive"
 	"github.com/dotcloud/docker/utils"
 )
 
@@ -57,15 +63,20 @@ func (c *ImageService) Create(image string) error {
 
 func (c *ImageService) Pull(image string) error {
 	name, tag := utils.ParseRepositoryTag(image)
-	if tag == "" {
+	if len(tag) == 0 {
 		tag = DEFAULTTAG
 	}
 	return c.PullTag(name, tag)
 }
 
 func (c *ImageService) PullTag(name, tag string) error {
+	var out io.Writer
+	if Logging {
+		out = os.Stdout
+	}
+
 	path := fmt.Sprintf("/images/create?fromImage=%s&tag=%s", name, tag)
-	return c.stream("POST", path, nil, nil)
+	return c.stream("POST", path, nil, out, http.Header{})
 }
 
 // Remove the image name from the filesystem
@@ -80,4 +91,33 @@ func (c *ImageService) Inspect(name string) (*Image, error) {
 	image := Image{}
 	err := c.do("GET", fmt.Sprintf("/images/%s/json", name), nil, &image)
 	return &image, err
+}
+
+// Build the Image
+func (c *ImageService) Build(tag, dir string) error {
+
+	// tar the file
+	context, err := archive.Tar(dir, archive.Uncompressed)
+	if err != nil {
+		return err
+	}
+
+	var body io.Reader
+	body = ioutil.NopCloser(context)
+
+	// Upload the build context
+	v := url.Values{}
+	v.Set("t", tag)
+	v.Set("q", "1")
+	v.Set("rm", "1")
+
+	// url path
+	path := fmt.Sprintf("/build?%s", v.Encode())
+
+	// set content type to tar file
+	headers := http.Header{}
+	headers.Set("Content-Type", "application/tar")
+
+	// make the request
+	return c.stream("POST", path, body, nil, headers)
 }

@@ -23,16 +23,39 @@ func (c *ContainerService) ListAll() ([]*Containers, error) {
 	return containers, err
 }
 
-// List all containers
+// Create a Container
 func (c *ContainerService) Create(conf *Config) (*Run, error) {
+	run, err := c.create(conf)
+	switch {
+	// if no error, exit immediately
+	case err == nil:
+		return run, nil
+	// if error we exit, unless it is
+	// a NOT FOUND error, which means we just
+	// need to download the Image from the center
+	// image index
+	case err != nil && err != ErrNotFound:
+		return nil, err
+	}
+
+	// attempt to pull the image
+	if err := c.Images.Pull(conf.Image); err != nil {
+		return nil, err
+	}
+
+	// now that we have the image, re-try creation
+	return c.create(conf)
+}
+
+func (c *ContainerService) create(conf *Config) (*Run, error) {
 	run := Run{}
 	err := c.do("POST", "/containers/create", conf, &run)
 	return &run, err
 }
 
 // Start the container id
-func (c *ContainerService) Start(id string) error {
-	return c.do("POST", fmt.Sprintf("/containers/%s/start", id), &HostConfig{}, nil)
+func (c *ContainerService) Start(id string, conf *HostConfig) error {
+	return c.do("POST", fmt.Sprintf("/containers/%s/start", id), &conf, nil)
 }
 
 // Stop the container id
@@ -66,17 +89,10 @@ func (c *ContainerService) Inspect(id string) (*Container, error) {
 }
 
 // Run the container
-func (c *ContainerService) Run(conf *Config, out io.Writer) (*Wait, error) {
+func (c *ContainerService) Run(conf *Config, host *HostConfig, out io.Writer) (*Wait, error) {
 	// create the container from the image
 	run, err := c.Create(conf)
-	// if an image is not found let's retrieve
-	// from the central index
-	if err == ErrNotFound {
-		// attempt to pull the image
-		if err := c.Images.Pull(conf.Image); err != nil {
-			return nil, err
-		}
-	} else if err != nil {
+	if err != nil {
 		return nil, err
 	}
 
@@ -86,7 +102,7 @@ func (c *ContainerService) Run(conf *Config, out io.Writer) (*Wait, error) {
 	}()
 
 	// start the container
-	if err := c.Start(run.ID); err != nil {
+	if err := c.Start(run.ID, host); err != nil {
 		return nil, err
 	}
 
@@ -100,13 +116,32 @@ func (c *ContainerService) Run(conf *Config, out io.Writer) (*Wait, error) {
 }
 
 // Run the container as a Daemon
-func (c *ContainerService) RunDaemon(conf *Config) (*Run, error) {
+func (c *ContainerService) RunDaemon(conf *Config, host *HostConfig) (*Run, error) {
 	run, err := c.Create(conf)
 	if err != nil {
 		return nil, err
 	}
 
 	// start the container
-	err = c.Start(run.ID)
+	err = c.Start(run.ID, host)
 	return run, err
+}
+
+func (c *ContainerService) RunDaemonPorts(image string, ports ...string) (*Run, error) {
+	// setup configuration
+	config := Config{Image: image}
+	config.ExposedPorts = make(map[Port]struct{})
+
+	// host configuration
+	host := HostConfig{}
+	host.PortBindings = make(map[Port][]PortBinding)
+
+	// loop through and add ports
+	for _, port := range ports {
+		config.ExposedPorts[Port(port+"/tcp")] = struct{}{}
+		host.PortBindings[Port(port+"/tcp")] = []PortBinding{{HostIp: "127.0.0.1", HostPort: ""}}
+	}
+	//127.0.0.1::%s
+	//map[3306/tcp:{}] map[3306/tcp:[{127.0.0.1 }]]
+	return c.RunDaemon(&config, &host)
 }

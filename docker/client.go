@@ -189,7 +189,7 @@ func (c *Client) hijack(method, path string, setRawTerminal bool, out io.Writer)
 	return nil
 }
 
-func (c *Client) stream(method, path string, in io.Reader, out io.Writer) error {
+func (c *Client) stream(method, path string, in io.Reader, out io.Writer, headers http.Header) error {
 	if (method == "POST" || method == "PUT") && in == nil {
 		in = bytes.NewReader(nil)
 	}
@@ -201,7 +201,7 @@ func (c *Client) stream(method, path string, in io.Reader, out io.Writer) error 
 	}
 
 	// set default headers
-	req.Header = http.Header{}
+	req.Header = headers
 	req.Header.Set("User-Agent", "Docker-Client/0.6.4")
 	req.Header.Set("Content-Type", "plain/text")
 
@@ -235,21 +235,16 @@ func (c *Client) stream(method, path string, in io.Reader, out io.Writer) error 
 		return ErrBadRequest
 	}
 
-	var (
-		isTerminal = false
-		terminalFd uintptr
-	)
-
-	if Logging {
-		terminalFd = os.Stdin.Fd()
-		isTerminal = term.IsTerminal(terminalFd)
-		if out == nil {
-			out = os.Stdout
-		}
+	// If no output we exit now with no errors
+	if out == nil {
+		return nil
 	}
 
+	var terminalFd = os.Stdin.Fd()
+	var isTerminal = term.IsTerminal(terminalFd)
+
 	// copy the output stream to the writer
-	if resp.Header.Get("Content-Type") == "application/json" {
+	if resp.Header.Get("Content-Type") == "application/json" && out == os.Stdout {
 		return utils.DisplayJSONMessagesStream(resp.Body, out, terminalFd, isTerminal)
 	}
 	// otherwise plain text
