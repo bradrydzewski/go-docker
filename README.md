@@ -6,12 +6,14 @@ go-docker is a Go client library for accessing the [Docker Remote API](http://do
 
 We recommend using this Docker package: https://github.com/fsouza/go-dockerclient
 
-This package adds some missing functionality we needed but was missing in the above package. We
-also chose to copy-paste all the Docker structs directy into our project to avoid linking Docker
-directly, since it has a CGO dependency.
+The primary different between the two packages are:
 
-Once the above issues are resolved we'll probably end up switching to the go-dockerclient package,
-since it doesn't make sense to maintain two different package libraries.
+* we've removed the CGO dependency by copying the Docker structs locally into the project
+* we've added functionality to create Docker images
+* go-dockerclient is better tested and is definitely more actively maintained
+
+We hope that eventually we can just use `go-dockerclient` since there is no reason to
+maintain two different implementations.
 
 ## Usage
 
