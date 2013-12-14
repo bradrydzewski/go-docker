@@ -240,11 +240,12 @@ func (c *Client) stream(method, path string, in io.Reader, out io.Writer, header
 		return nil
 	}
 
-	var terminalFd = os.Stdin.Fd()
-	var isTerminal = term.IsTerminal(terminalFd)
-
 	// copy the output stream to the writer
-	if resp.Header.Get("Content-Type") == "application/json" && out == os.Stdout {
+	if resp.Header.Get("Content-Type") == "application/json" {
+		var terminalFd = os.Stdin.Fd()
+		var isTerminal = term.IsTerminal(terminalFd)
+		// it may not make sense to put this code here, but it works for
+		// us at the moment, and I don't feel like refactoring
 		return utils.DisplayJSONMessagesStream(resp.Body, out, terminalFd, isTerminal)
 	}
 	// otherwise plain text
