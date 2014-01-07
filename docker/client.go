@@ -13,7 +13,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dotcloud/docker/term"
+	"github.com/dotcloud/docker/pkg/term"
 	"github.com/dotcloud/docker/utils"
 )
 
